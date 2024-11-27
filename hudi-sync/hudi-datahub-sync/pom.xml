@@ -27,6 +27,7 @@
     <version>1.0.0-SNAPSHOT</version>
     <relativePath>../../pom.xml</relativePath>
   </parent>
+  
 
   <modelVersion>4.0.0</modelVersion>
 
@@ -34,17 +35,35 @@
   <packaging>jar</packaging>
 
   <properties>
-    <datahub.version>0.8.45</datahub.version>
+    <datahub.version>0.15.0rc9</datahub.version>
     <httpasync.version>4.1.5</httpasync.version>
   </properties>
 
+
   <dependencies>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <version>1.18.30</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-annotations</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-core</artifactId>
+    </dependency>
     <dependency>
       <groupId>io.acryl</groupId>
       <artifactId>datahub-client</artifactId>
       <version>${datahub.version}</version>
     </dependency>
-
     <dependency>
       <groupId>org.apache.httpcomponents</groupId>
       <artifactId>fluent-hc</artifactId>
@@ -85,6 +104,15 @@
       <version>${project.version}</version>
     </dependency>
 
+    <!-- Hadoop to extract Properties -->
+    <dependency>
+      <groupId>org.apache.hudi</groupId>
+      <artifactId>hudi-hadoop-mr</artifactId>
+      <version>${project.version}</version>
+      <scope>compile</scope>
+    </dependency>
+
+
     <!-- Testing -->
     <dependency>
       <groupId>org.apache.hudi</groupId>
@@ -106,13 +134,19 @@
       <scope>test</scope>
       <type>test-jar</type>
     </dependency>
-
     <!-- Kryo -->
     <dependency>
       <groupId>com.esotericsoftware</groupId>
       <artifactId>kryo-shaded</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+    <groupId>org.apache.hudi</groupId>
+    <artifactId>hudi-hive-sync</artifactId>
+    <version>${project.version}</version>
+    <!-- <type>test-jar</type> -->
+    <scope>test</scope>
+</dependency>
   </dependencies>
 
   <build>

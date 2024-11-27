@@ -24,6 +24,7 @@ import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.hadoop.fs.HadoopFSUtils;
 import org.apache.hudi.sync.datahub.config.DataHubSyncConfig;
 
+import com.linkedin.mxe.MetadataChangeProposal;
 import datahub.client.MetadataWriteResponse;
 import datahub.client.rest.RestEmitter;
 import datahub.event.MetadataChangeProposalWrapper;
@@ -40,15 +41,22 @@ import org.mockito.MockitoAnnotations;
 
 import java.io.IOException;
 import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 import static org.apache.hudi.sync.common.HoodieSyncConfig.META_SYNC_BASE_PATH;
 import static org.apache.hudi.sync.common.HoodieSyncConfig.META_SYNC_PARTITION_EXTRACTOR_CLASS;
+import static org.apache.hudi.sync.datahub.config.DataHubSyncConfig.META_SYNC_DATAHUB_SYNC_SUPPRESS_EXCEPTIONS;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 public class TestDataHubSyncClient {
 
@@ -103,8 +111,112 @@ public class TestDataHubSyncClient {
     DataHubSyncClientStub dhClient = new DataHubSyncClientStub(configStub);
 
     dhClient.updateTableSchema("some_table", null, null);
-    verify(restEmitterMock, times(2)).emit(any(MetadataChangeProposalWrapper.class),
-            Mockito.any());
+    verify(restEmitterMock, times(9)).emit(any(MetadataChangeProposalWrapper.class),
+        Mockito.any());
+  }
+
+  @Test
+  public void testUpdateTableProperties() throws Exception {
+    Properties props = new Properties();
+    props.put(META_SYNC_PARTITION_EXTRACTOR_CLASS.key(), DummyPartitionValueExtractor.class.getName());
+    props.put(META_SYNC_BASE_PATH.key(), tableBasePath);
+
+    when(restEmitterMock.emit(any(MetadataChangeProposal.class), any()))
+        .thenReturn(CompletableFuture.completedFuture(MetadataWriteResponse.builder().build()));
+
+    DatahubSyncConfigStub configStub = new DatahubSyncConfigStub(props, restEmitterMock);
+    DataHubSyncClientStub dhClient = new DataHubSyncClientStub(configStub);
+
+    Map<String, String> properties = new HashMap<>();
+    properties.put("key1", "value1");
+    properties.put("key2", "value2");
+
+    boolean result = dhClient.updateTableProperties("some_table", properties);
+    assertTrue(result);
+    verify(restEmitterMock, times(1)).emit(any(MetadataChangeProposal.class), any());
+  }
+
+  @Test
+  public void testUpdateTablePropertiesFailure() throws Exception {
+    Properties props = new Properties();
+    props.put(META_SYNC_PARTITION_EXTRACTOR_CLASS.key(), DummyPartitionValueExtractor.class.getName());
+    props.put(META_SYNC_BASE_PATH.key(), tableBasePath);
+    props.put(META_SYNC_DATAHUB_SYNC_SUPPRESS_EXCEPTIONS.key(), "false");
+
+    when(restEmitterMock.emit(any(MetadataChangeProposalWrapper.class), any()))
+        .thenReturn(CompletableFuture.failedFuture(new IOException("Emission failed")));
+
+    DatahubSyncConfigStub configStub = new DatahubSyncConfigStub(props, restEmitterMock);
+    DataHubSyncClientStub dhClient = new DataHubSyncClientStub(configStub);
+
+    Map<String, String> properties = new HashMap<>();
+    properties.put("key1", "value1");
+
+    assertThrows(HoodieDataHubSyncException.class, () ->
+        dhClient.updateTableProperties("some_table", properties));
+  }
+
+  @Test
+  public void testGetLastCommitTimeSynced() {
+    Properties props = new Properties();
+    props.put(META_SYNC_PARTITION_EXTRACTOR_CLASS.key(), DummyPartitionValueExtractor.class.getName());
+    props.put(META_SYNC_BASE_PATH.key(), tableBasePath);
+
+    DatahubSyncConfigStub configStub = new DatahubSyncConfigStub(props, restEmitterMock);
+    DataHubSyncClientStub dhClient = new DataHubSyncClientStub(configStub);
+
+    assertThrows(UnsupportedOperationException.class, () ->
+        dhClient.getLastCommitTimeSynced("some_table"));
+  }
+
+  @Test
+  public void testGetMetastoreSchema() {
+    Properties props = new Properties();
+    props.put(META_SYNC_PARTITION_EXTRACTOR_CLASS.key(), DummyPartitionValueExtractor.class.getName());
+    props.put(META_SYNC_BASE_PATH.key(), tableBasePath);
+
+    DatahubSyncConfigStub configStub = new DatahubSyncConfigStub(props, restEmitterMock);
+    DataHubSyncClientStub dhClient = new DataHubSyncClientStub(configStub);
+
+    assertThrows(UnsupportedOperationException.class, () ->
+        dhClient.getMetastoreSchema("some_table"));
+  }
+
+  @Test
+  public void testUpdateTableSchemaWithEmitterFailure() throws Exception {
+    Properties props = new Properties();
+    props.put(META_SYNC_PARTITION_EXTRACTOR_CLASS.key(), DummyPartitionValueExtractor.class.getName());
+    props.put(META_SYNC_BASE_PATH.key(), tableBasePath);
+    props.put(META_SYNC_DATAHUB_SYNC_SUPPRESS_EXCEPTIONS.key(), "false");
+
+    // Create a failed future that will throw when accessed
+    CompletableFuture<MetadataWriteResponse> future = new CompletableFuture<>();
+    future.completeExceptionally(new ExecutionException("Emission failed", new IOException()));
+
+    // Configure mock to return the failed future for ALL calls
+    when(restEmitterMock.emit((MetadataChangeProposalWrapper) any(), any())).thenReturn(future);
+
+    DatahubSyncConfigStub configStub = new DatahubSyncConfigStub(props, restEmitterMock);
+    DataHubSyncClientStub dhClient = new DataHubSyncClientStub(configStub);
+
+    assertThrows(HoodieDataHubSyncException.class, () ->
+        dhClient.updateTableSchema("some_table", null, null));
+  }
+
+  @Test
+  public void testUpdateLastCommitTimeSynced() throws Exception {
+    Properties props = new Properties();
+    props.put(META_SYNC_PARTITION_EXTRACTOR_CLASS.key(), DummyPartitionValueExtractor.class.getName());
+    props.put(META_SYNC_BASE_PATH.key(), tableBasePath);
+
+    when(restEmitterMock.emit(any(MetadataChangeProposal.class), any()))
+        .thenReturn(CompletableFuture.completedFuture(MetadataWriteResponse.builder().build()));
+
+    DatahubSyncConfigStub configStub = new DatahubSyncConfigStub(props, restEmitterMock);
+    DataHubSyncClientStub dhClient = new DataHubSyncClientStub(configStub);
+
+    dhClient.updateLastCommitTimeSynced("some_table");
+    verify(restEmitterMock, times(1)).emit(any(MetadataChangeProposal.class), any());
   }
 
   public class DataHubSyncClientStub extends DataHubSyncClient {
@@ -116,6 +228,11 @@ public class TestDataHubSyncClient {
     @Override
     Schema getAvroSchemaWithoutMetadataFields(HoodieTableMetaClient metaClient) {
       return avroSchema;
+    }
+
+    @Override
+    protected String getLastCommitTime() {
+      return "1000";
     }
 
   }
@@ -133,6 +250,7 @@ public class TestDataHubSyncClient {
     public RestEmitter getRestEmitter() {
       return emitterMock;
     }
+
   }
 
 }
